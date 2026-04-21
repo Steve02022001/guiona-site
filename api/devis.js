@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
       console.error('SF auth error:', errText);
-      return res.status(500).json({ error: 'Authentification Salesforce échouée' });
+      return res.status(500).json({ error: 'Authentification Salesforce échouée', details: errText });
     }
 
     const { access_token, instance_url } = await tokenRes.json();
