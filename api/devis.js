@@ -78,11 +78,34 @@ module.exports = async function handler(req, res) {
     }
 
     const now = new Date();
+    const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
     const closeDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const chantierPayload = {
+      Name: `CHA_${datePrefix}_${prenom}_${nom}`,
+      Account__c: accResult.id,
+    };
+
+    const chaRes = await fetch(`${sfApi}/sobjects/Chantier__c`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(chantierPayload),
+    });
+
+    const chaResult = await chaRes.json();
+
+    if (Array.isArray(chaResult) || !chaResult.success) {
+      console.error('Chantier creation error:', JSON.stringify(chaResult));
+      return res.status(500).json({ error: 'Erreur création chantier', details: chaResult });
+    }
 
     const oppPayload = {
       AccountId: accResult.id,
-      Name: `PRJ_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}_${prenom}_${nom}`,
+      chantier__c: chaResult.id,
+      Name: `PRJ_${datePrefix}_${prenom}_${nom}`,
       StageName: 'Analyse',
       CloseDate: closeDate.toISOString().split('T')[0],
       Description: [
