@@ -35,18 +35,20 @@ module.exports = async function handler(req, res) {
     const importPayload = {
       nomCompte__c: nom,
       prenomCompte__c: prenom,
-      civilite__c: civiliteMap[civilite] || '',
-      email__c: email,
+      civiliteCompte__c: civiliteMap[civilite] || '',
+      emailCompte__c: email,
       telephoneMobileCompte__c: telephone,
-      address__c: adresse || '',
+      adresseGeolocalisation__c: adresse || '',
       nomFichierSource__c: 'formulaire_site_kpark.fr',
       source__c: '44 - Formulaire site KparK',
       Source_web__c: '44 - Formulaire site KparK',
-      Description__c: [
-        products.length ? `Ouvertures: ${products.join(', ')}` : '',
-        message || '',
-      ].filter(Boolean).join('\n'),
     };
+
+    if (products.includes('fenetre')) importPayload.quantiteFenetre__c = 1;
+    if (products.includes('porte-fenetre')) importPayload.quantitePorteFenetre__c = 1;
+    if (products.includes('baie-vitree')) importPayload.quantiteCoulissant__c = 1;
+
+    if (message) importPayload.Description__c = message;
 
     const importRes = await fetch(`${sfApi}/sobjects/Import__c`, {
       method: 'POST',
