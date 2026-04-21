@@ -123,7 +123,7 @@ L'objet Salesforce cible est **`Import__c`** (étiquette : "Fiche contact (inter
 | Ville | `villeCompte__c` | Texte(40) | Autocomplete |
 | *(fixe)* | `nomFichierSource__c` | Texte(255) | `formulaire_site_kpark.fr` |
 | *(fixe)* | `source__c` | Liste de sélection | `44 - Formulaire site KparK` |
-| *(fixe)* | `Source_web__c` | Texte(255) | `44 - Formulaire site KparK` |
+| *(fixe)* | `callSource__c` | Texte(255) | `44 - Formulaire site KparK` |
 | Message | `Description__c` | *(à confirmer)* | Saisie utilisateur |
 
 ### 4.4 Mapping des ouvertures → champs quantité
