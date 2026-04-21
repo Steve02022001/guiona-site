@@ -49,22 +49,16 @@ module.exports = async function handler(req, res) {
     }
 
     const products = Array.isArray(ouvertures) ? ouvertures : [];
+    const civiliteMap = { madame: 'Mme.', monsieur: 'M.' };
 
     const accountPayload = {
       RecordTypeId: personAccountRtId,
       LastName: nom,
       FirstName: prenom,
-      civilite__c: civilite || '',
-      nomCompte__c: nom,
-      prenomCompte__c: prenom,
-      email__c: email,
-      telephoneMobileCompte__c: telephone,
-      address__c: adresse || '',
-      nomFichierSource__c: 'formulaire_site_kpark.fr',
-      source__c: '44 - Formulaire site KparK',
-      quantiteFenetre__c: products.includes('fenetre') ? 1 : 0,
-      quantitePorteFenetre__c: products.includes('porte-fenetre') ? 1 : 0,
-      quantiteCoulissant__c: products.includes('baie-vitree') ? 1 : 0,
+      Salutation: civiliteMap[civilite] || '',
+      PersonEmail: email,
+      PersonMobilePhone: telephone,
+      BillingStreet: adresse || '',
     };
 
     const accRes = await fetch(`${sfApi}/sobjects/Account`, {
@@ -91,8 +85,10 @@ module.exports = async function handler(req, res) {
       Name: `PRJ_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}_${prenom}_${nom}`,
       StageName: 'Analyse',
       CloseDate: closeDate.toISOString().split('T')[0],
-      Description: message || '',
-      Source_web__c: '44 - Formulaire site KparK',
+      Description: [
+        products.length ? `Ouvertures: ${products.join(', ')}` : '',
+        message ? `Message: ${message}` : '',
+      ].filter(Boolean).join('\n'),
     };
 
     if (projetRtId) {
