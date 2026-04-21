@@ -29,109 +29,44 @@ module.exports = async function handler(req, res) {
     const { access_token, instance_url } = await tokenRes.json();
     const sfApi = `${instance_url}/services/data/v59.0`;
 
-    const [accRtRes, oppRtRes] = await Promise.all([
-      fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Account' AND IsPersonType=true LIMIT 1")}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      }),
-      fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Opportunity' AND Name='Projet' LIMIT 1")}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      }),
-    ]);
-
-    const accRtData = await accRtRes.json();
-    const oppRtData = await oppRtRes.json();
-    const personAccountRtId = accRtData.records?.[0]?.Id;
-    const projetRtId = oppRtData.records?.[0]?.Id;
-
-    if (!personAccountRtId) {
-      console.error('Person Account RecordType not found');
-      return res.status(500).json({ error: 'Configuration Salesforce incomplète (RecordType Account)' });
-    }
-
     const products = Array.isArray(ouvertures) ? ouvertures : [];
     const civiliteMap = { madame: 'Mme.', monsieur: 'M.' };
 
-    const accountPayload = {
-      RecordTypeId: personAccountRtId,
-      LastName: nom,
-      FirstName: prenom,
-      Salutation: civiliteMap[civilite] || '',
-      PersonEmail: email,
-      PersonMobilePhone: telephone,
-      BillingStreet: adresse || '',
-    };
-
-    const accRes = await fetch(`${sfApi}/sobjects/Account`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(accountPayload),
-    });
-
-    const accResult = await accRes.json();
-
-    if (Array.isArray(accResult) || !accResult.success) {
-      console.error('Account creation error:', JSON.stringify(accResult));
-      return res.status(500).json({ error: 'Erreur création compte', details: accResult });
-    }
-
-    // Wait for SF automation to create the Chantier
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-    const chaQueryRes = await fetch(`${sfApi}/query?q=${encodeURIComponent(`SELECT Id FROM Chantier__c WHERE Proprietaire__c='${accResult.id}' ORDER BY CreatedDate DESC LIMIT 1`)}`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
-    const chaQueryData = await chaQueryRes.json();
-    const chantierId = chaQueryData.records?.[0]?.Id;
-
-    if (!chantierId) {
-      console.error('Auto-created Chantier not found for account:', accResult.id);
-      return res.status(500).json({ error: 'Chantier auto-créé non trouvé', details: chaQueryData });
-    }
-
-    const now = new Date();
-    const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const closeDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-    const oppPayload = {
-      AccountId: accResult.id,
-      chantier__c: chantierId,
-      Name: `PRJ_${datePrefix}_${prenom}_${nom}`,
-      StageName: 'Analyse',
-      CloseDate: closeDate.toISOString().split('T')[0],
-      Description: [
+    const importPayload = {
+      nomCompte__c: nom,
+      prenomCompte__c: prenom,
+      civilite__c: civiliteMap[civilite] || '',
+      email__c: email,
+      telephoneMobileCompte__c: telephone,
+      address__c: adresse || '',
+      nomFichierSource__c: 'formulaire_site_kpark.fr',
+      source__c: '44 - Formulaire site KparK',
+      Source_web__c: '44 - Formulaire site KparK',
+      Description__c: [
         products.length ? `Ouvertures: ${products.join(', ')}` : '',
-        message ? `Message: ${message}` : '',
+        message || '',
       ].filter(Boolean).join('\n'),
     };
 
-    if (projetRtId) {
-      oppPayload.RecordTypeId = projetRtId;
-    }
-
-    const oppRes = await fetch(`${sfApi}/sobjects/Opportunity`, {
+    const importRes = await fetch(`${sfApi}/sobjects/Import__c`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(oppPayload),
+      body: JSON.stringify(importPayload),
     });
 
-    const oppResult = await oppRes.json();
+    const importResult = await importRes.json();
 
-    if (Array.isArray(oppResult) || !oppResult.success) {
-      console.error('Opportunity creation error:', JSON.stringify(oppResult));
-      return res.status(500).json({ error: 'Erreur création projet', details: oppResult });
+    if (Array.isArray(importResult) || !importResult.success) {
+      console.error('Import creation error:', JSON.stringify(importResult));
+      return res.status(500).json({ error: 'Erreur création import', details: importResult });
     }
 
     return res.status(200).json({
       success: true,
-      accountId: accResult.id,
-      chantierId: chantierId,
-      opportunityId: oppResult.id,
+      importId: importResult.id,
     });
 
   } catch (error) {
