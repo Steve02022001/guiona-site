@@ -29,12 +29,19 @@ module.exports = async function handler(req, res) {
     const { access_token, instance_url } = await tokenRes.json();
     const sfApi = `${instance_url}/services/data/v59.0`;
 
-    const accRtRes = await fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Account' AND IsPersonType=true LIMIT 1")}`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+    const [accRtRes, oppRtRes] = await Promise.all([
+      fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Account' AND IsPersonType=true LIMIT 1")}`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }),
+      fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Opportunity' AND Name='Projet' LIMIT 1")}`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      }),
+    ]);
 
     const accRtData = await accRtRes.json();
+    const oppRtData = await oppRtRes.json();
     const personAccountRtId = accRtData.records?.[0]?.Id;
+    const projetRtId = oppRtData.records?.[0]?.Id;
 
     if (!personAccountRtId) {
       console.error('Person Account RecordType not found');
@@ -70,40 +77,61 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Erreur création compte', details: accResult });
     }
 
-    const description = [
-      products.length ? `Ouvertures: ${products.join(', ')}` : '',
-      message ? `Message: ${message}` : '',
-    ].filter(Boolean).join('\n');
+    // Wait for SF automation to create the Chantier
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
-    if (description) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    const chaQueryRes = await fetch(`${sfApi}/query?q=${encodeURIComponent(`SELECT Id FROM Chantier__c WHERE Proprietaire__c='${accResult.id}' ORDER BY CreatedDate DESC LIMIT 1`)}`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+    const chaQueryData = await chaQueryRes.json();
+    const chantierId = chaQueryData.records?.[0]?.Id;
 
-      const oppQueryRes = await fetch(`${sfApi}/query?q=${encodeURIComponent(`SELECT Id FROM Opportunity WHERE AccountId='${accResult.id}' LIMIT 1`)}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
-      const oppQueryData = await oppQueryRes.json();
-      const oppId = oppQueryData.records?.[0]?.Id;
+    if (!chantierId) {
+      console.error('Auto-created Chantier not found for account:', accResult.id);
+      return res.status(500).json({ error: 'Chantier auto-créé non trouvé', details: chaQueryData });
+    }
 
-      if (oppId) {
-        const updateRes = await fetch(`${sfApi}/sobjects/Opportunity/${oppId}`, {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ Description: description }),
-        });
+    const now = new Date();
+    const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const closeDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-        if (!updateRes.ok) {
-          const errData = await updateRes.text();
-          console.error('Opportunity update error:', errData);
-        }
-      }
+    const oppPayload = {
+      AccountId: accResult.id,
+      chantier__c: chantierId,
+      Name: `PRJ_${datePrefix}_${prenom}_${nom}`,
+      StageName: 'Analyse',
+      CloseDate: closeDate.toISOString().split('T')[0],
+      Description: [
+        products.length ? `Ouvertures: ${products.join(', ')}` : '',
+        message ? `Message: ${message}` : '',
+      ].filter(Boolean).join('\n'),
+    };
+
+    if (projetRtId) {
+      oppPayload.RecordTypeId = projetRtId;
+    }
+
+    const oppRes = await fetch(`${sfApi}/sobjects/Opportunity`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(oppPayload),
+    });
+
+    const oppResult = await oppRes.json();
+
+    if (Array.isArray(oppResult) || !oppResult.success) {
+      console.error('Opportunity creation error:', JSON.stringify(oppResult));
+      return res.status(500).json({ error: 'Erreur création projet', details: oppResult });
     }
 
     return res.status(200).json({
       success: true,
       accountId: accResult.id,
+      chantierId: chantierId,
+      opportunityId: oppResult.id,
     });
 
   } catch (error) {
