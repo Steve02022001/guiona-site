@@ -960,7 +960,7 @@
     }
   });
 
-  function submitForm() {
+  async function submitForm() {
     let valid = true;
 
     const fields = [
@@ -985,15 +985,47 @@
 
     if (!valid) return;
 
-    // Confirmation
-    document.getElementById('step-3').classList.remove('active');
-    document.getElementById('confirmation').classList.add('active');
-    document.getElementById('progress').style.width = '100%';
-    document.getElementById('progress-label').textContent = 'Envoyé !';
-    ['ind-1','ind-2','ind-3'].forEach(id => {
-      document.getElementById(id).classList.remove('active');
-      document.getElementById(id).classList.add('done');
-    });
+    const submitBtn = document.querySelector('.btn-submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Envoi en cours...';
+
+    try {
+      const response = await fetch('/api/devis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          civilite: selections.civilite || '',
+          prenom: document.getElementById('prenom').value.trim(),
+          nom: document.getElementById('nom').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          telephone: document.getElementById('tel').value.trim(),
+          adresse: document.getElementById('adresse').value.trim(),
+          message: document.getElementById('message').value.trim(),
+          ouvertures: selections.ouverture,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        console.error('Erreur API:', errData);
+        throw new Error(errData.error || 'Erreur serveur');
+      }
+
+      document.getElementById('step-3').classList.remove('active');
+      document.getElementById('confirmation').classList.add('active');
+      document.getElementById('progress').style.width = '100%';
+      document.getElementById('progress-label').textContent = 'Envoyé !';
+      ['ind-1','ind-2','ind-3'].forEach(id => {
+        document.getElementById(id).classList.remove('active');
+        document.getElementById(id).classList.add('done');
+      });
+
+    } catch (error) {
+      console.error('Erreur soumission:', error);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Envoyer ma demande';
+      alert('Une erreur est survenue. Veuillez réessayer ou nous contacter directement.');
+    }
   }
 </script>
 </body>
