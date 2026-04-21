@@ -83,7 +83,6 @@ module.exports = async function handler(req, res) {
 
     const chantierPayload = {
       Name: `CHA_${datePrefix}_${prenom}_${nom}`,
-      Account__c: accResult.id,
     };
 
     const chaRes = await fetch(`${sfApi}/sobjects/Chantier__c`, {
