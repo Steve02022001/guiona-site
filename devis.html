@@ -833,6 +833,14 @@
             border-top: none; display: none; max-height: 220px; overflow-y: auto;
           "></div>
         </div>
+        <div class="field-group">
+          <label class="field-label">Code postal</label>
+          <input type="text" class="field-input" id="codepostal" placeholder="75001" readonly>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Ville</label>
+          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
+        </div>
         <div class="field-group span2">
           <label class="field-label">Message (optionnel)</label>
           <textarea class="field-input" id="message" placeholder="Décrivez votre projet : nombre d'ouvertures, état actuel, contraintes particulières..."></textarea>
@@ -941,7 +949,9 @@
             div.onmouseenter = () => div.style.background = 'rgba(184,115,51,0.06)';
             div.onmouseleave = () => div.style.background = '';
             div.onclick = () => {
-              document.getElementById('adresse').value = label;
+              document.getElementById('adresse').value = f.properties.name || label;
+              document.getElementById('codepostal').value = f.properties.postcode || '';
+              document.getElementById('ville').value = f.properties.city || '';
               box.style.display = 'none';
             };
             box.appendChild(div);
@@ -1000,6 +1010,8 @@
           email: document.getElementById('email').value.trim(),
           telephone: document.getElementById('tel').value.trim(),
           adresse: document.getElementById('adresse').value.trim(),
+          codePostal: document.getElementById('codepostal').value.trim(),
+          ville: document.getElementById('ville').value.trim(),
           message: document.getElementById('message').value.trim(),
           ouvertures: selections.ouverture,
         }),

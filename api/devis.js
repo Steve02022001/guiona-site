@@ -3,7 +3,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { civilite, prenom, nom, email, telephone, adresse, message, ouvertures } = req.body;
+  const { civilite, prenom, nom, email, telephone, adresse, codePostal, ville, message, ouvertures } = req.body;
 
   if (!prenom || !nom || !email || !telephone) {
     return res.status(400).json({ error: 'Champs obligatoires manquants' });
@@ -39,6 +39,8 @@ module.exports = async function handler(req, res) {
       emailCompte__c: email,
       telephoneMobileCompte__c: telephone,
       adresseGeolocalisation__c: adresse || '',
+      codePostalCompte__c: codePostal || '',
+      villeCompte__c: ville || '',
       nomFichierSource__c: 'formulaire_site_kpark.fr',
       source__c: '44 - Formulaire site KparK',
       Source_web__c: '44 - Formulaire site KparK',
