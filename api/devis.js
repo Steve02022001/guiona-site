@@ -29,81 +29,44 @@ module.exports = async function handler(req, res) {
     const { access_token, instance_url } = await tokenRes.json();
     const sfApi = `${instance_url}/services/data/v59.0`;
 
-    const accRtRes = await fetch(`${sfApi}/query?q=${encodeURIComponent("SELECT Id FROM RecordType WHERE SObjectType='Account' AND IsPersonType=true LIMIT 1")}`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
-
-    const accRtData = await accRtRes.json();
-    const personAccountRtId = accRtData.records?.[0]?.Id;
-
-    if (!personAccountRtId) {
-      console.error('Person Account RecordType not found');
-      return res.status(500).json({ error: 'Configuration Salesforce incomplète (RecordType Account)' });
-    }
-
     const products = Array.isArray(ouvertures) ? ouvertures : [];
     const civiliteMap = { madame: 'Mme.', monsieur: 'M.' };
 
-    const accountPayload = {
-      RecordTypeId: personAccountRtId,
-      LastName: nom,
-      FirstName: prenom,
-      Salutation: civiliteMap[civilite] || '',
-      PersonEmail: email,
-      PersonMobilePhone: telephone,
-      BillingStreet: adresse || '',
+    const importPayload = {
+      nomCompte__c: nom,
+      prenomCompte__c: prenom,
+      civilite__c: civiliteMap[civilite] || '',
+      email__c: email,
+      telephoneMobileCompte__c: telephone,
+      address__c: adresse || '',
+      nomFichierSource__c: 'formulaire_site_kpark.fr',
+      source__c: '44 - Formulaire site KparK',
+      Source_web__c: '44 - Formulaire site KparK',
+      Description__c: [
+        products.length ? `Ouvertures: ${products.join(', ')}` : '',
+        message || '',
+      ].filter(Boolean).join('\n'),
     };
 
-    const accRes = await fetch(`${sfApi}/sobjects/Account`, {
+    const importRes = await fetch(`${sfApi}/sobjects/Import__c`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(accountPayload),
+      body: JSON.stringify(importPayload),
     });
 
-    const accResult = await accRes.json();
+    const importResult = await importRes.json();
 
-    if (Array.isArray(accResult) || !accResult.success) {
-      console.error('Account creation error:', JSON.stringify(accResult));
-      return res.status(500).json({ error: 'Erreur création compte', details: accResult });
-    }
-
-    const description = [
-      products.length ? `Ouvertures: ${products.join(', ')}` : '',
-      message ? `Message: ${message}` : '',
-    ].filter(Boolean).join('\n');
-
-    if (description) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      const oppQueryRes = await fetch(`${sfApi}/query?q=${encodeURIComponent(`SELECT Id FROM Opportunity WHERE AccountId='${accResult.id}' LIMIT 1`)}`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
-      const oppQueryData = await oppQueryRes.json();
-      const oppId = oppQueryData.records?.[0]?.Id;
-
-      if (oppId) {
-        const updateRes = await fetch(`${sfApi}/sobjects/Opportunity/${oppId}`, {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ Description: description }),
-        });
-
-        if (!updateRes.ok) {
-          const errData = await updateRes.text();
-          console.error('Opportunity update error:', errData);
-        }
-      }
+    if (Array.isArray(importResult) || !importResult.success) {
+      console.error('Import creation error:', JSON.stringify(importResult));
+      return res.status(500).json({ error: 'Erreur création import', details: importResult });
     }
 
     return res.status(200).json({
       success: true,
-      accountId: accResult.id,
+      importId: importResult.id,
     });
 
   } catch (error) {
