@@ -3,6 +3,7 @@ const ENDPOINT_MAP = {
   email: () => process.env.DQE_ENDPOINT_EMAIL,
   phone: () => process.env.DQE_ENDPOINT_TEL,
   cp: () => 'CP',
+  adr: () => 'ADR',
 };
 
 module.exports = async function handler(req, res) {
@@ -15,7 +16,7 @@ module.exports = async function handler(req, res) {
 
   const endpointResolver = ENDPOINT_MAP[type];
   if (!endpointResolver) {
-    return res.status(400).json({ error: 'Parameter "type" doit être address | email | phone | cp' });
+    return res.status(400).json({ error: 'Parameter "type" doit être address | email | phone | cp | adr' });
   }
   const endpoint = endpointResolver();
   if (!endpoint) {
