@@ -1,229 +1,353 @@
-# Documentation technique — Intégration Salesforce du formulaire de devis
+# Documentation technique — POC Guiona
+**Formulaire de devis connecté à Salesforce avec qualification DQE**
+
+---
 
 ## 1. Vue d'ensemble
 
-Le formulaire de devis du site Guiona (`devis.html`) est connecté au CRM Salesforce (sandbox Kube3) via une API serverless hébergée sur Vercel. Quand un visiteur remplit le formulaire, les données sont envoyées à Salesforce dans l'objet **Import__c** (appelé "Fiche contact" dans l'interface SF). Les automations Salesforce se chargent ensuite de créer le Compte, le Chantier et le Projet.
+Ce site est un POC (preuve de concept) pour KparK / Guiona. Il reproduit le comportement du formulaire de demande de devis de **kpark.fr** avec un site de démonstration indépendant appelé **Guiona**.
 
-### Architecture
+Quand un visiteur remplit le formulaire, 3 choses se passent automatiquement en arrière-plan :
 
-```
-┌──────────────┐     POST /api/devis      ┌──────────────────┐     API REST SF     ┌─────────────────┐
-│  Formulaire  │ ─────────────────────────▶│  Vercel Serverless│ ──────────────────▶│   Salesforce     │
-│  devis.html  │                           │  api/devis.js     │                    │   Import__c      │
-└──────────────┘                           └──────────────────┘                    └────────┬────────┘
-                                                                                           │
-                                                                                    Automations SF
-                                                                                           │
-                                                                              ┌────────────┼────────────┐
-                                                                              ▼            ▼            ▼
-                                                                           Compte      Chantier      Projet
-```
+1. **Les données saisies sont vérifiées par DQE** (email existe ? numéro valide ? adresse réelle ?)
+2. **La sectorisation Salesforce est consultée** pour savoir si un magasin couvre la zone du client
+3. **Une fiche contact `Import__c` est créée dans Salesforce** → déclenche les automations qui créent Compte + Chantier + Projet
 
 ---
 
-## 2. Fichiers concernés
+## 2. Architecture en un coup d'œil
+
+```
+┌────────────┐           ┌─────────────────┐           ┌────────────┐
+│ Navigateur │ ────────▶ │ Vercel (backend)│ ────────▶ │    DQE     │
+│ (le client)│ ◀──────── │   api/*.js      │ ◀──────── │ Software   │
+└────────────┘           └────────┬────────┘           └────────────┘
+                                  │
+                                  │
+                                  ▼
+                         ┌─────────────────┐
+                         │   Salesforce    │
+                         │   (Kube3)       │
+                         └─────────────────┘
+```
+
+**3 acteurs en présence :**
+- **Navigateur** : le formulaire `devis.html` que le visiteur voit.
+- **Vercel** : notre serveur intermédiaire (fonctions `api/*.js`). Il masque les clés secrètes et orchestre les appels.
+- **DQE & Salesforce** : services externes.
+
+**Pourquoi un serveur intermédiaire ?** Parce que les clés DQE et Salesforce doivent rester **secrètes**. Si on les mettait dans le navigateur, n'importe qui pourrait les copier (via F12).
+
+---
+
+## 3. Les fichiers clés
 
 | Fichier | Rôle |
-|---------|------|
-| `devis.html` | Formulaire front-end en 3 étapes |
-| `api/devis.js` | Fonction serverless Vercel (backend) |
-| `technologie-pvc.html` | Lien CTA header corrigé vers `devis.html` |
-| `inspirations.html` | Lien CTA header corrigé vers `devis.html` |
+|---|---|
+| `devis.html` | Formulaire en 2 étapes (HTML/CSS/JS vanilla) |
+| `api/devis.js` | Création de la fiche Import__c dans Salesforce |
+| `api/dqe.js` | Proxy Vercel vers l'API DQE (masque la licence) |
+| `api/check-sectorisation.js` | Vérifie si Guiona couvre la zone via Salesforce |
 
 ---
 
-## 3. Formulaire front-end (`devis.html`)
+## 4. Le formulaire en 2 étapes
 
-### 3.1 Les 3 étapes du formulaire
+### Étape 1 — Votre projet
+- **Produit(s)** : fenêtre / porte-fenêtre / baie vitrée (multi-sélection)
+- **Situation** : propriétaire / locataire
+- **Habitat** : pavillon / appartement
+- **Civilité** : madame / monsieur
+- **Coordonnées** : nom, prénom, code postal, ville, adresse (facultative), téléphone, email
 
-| Étape | Contenu |
-|-------|---------|
-| 1 — Type d'ouverture | Multi-sélection : Fenêtre, Porte-fenêtre, Baie vitrée |
-| 2 — Situation | Choix unique : Propriétaire, Locataire, Promoteur, Entreprise |
-| 3 — Coordonnées | Civilité, Prénom, Nom, Téléphone, Email, Adresse, Code postal, Ville, Message |
+### Étape 2 — Détails du projet
+Pour chaque produit choisi, on demande :
+- **Type d'ouverture** (par ex : 2 vantaux, 1 vantail…)
+- **Quantité** (1 à 10 et plus)
+- **Matériau** (PVC, Bois, Aluminium, Mixte)
 
-### 3.2 Autocomplete adresse
+---
 
-L'API gouvernementale `api-adresse.data.gouv.fr` est utilisée pour l'autocomplétion :
+## 5. Le cœur du système : la validation DQE
 
-- L'utilisateur tape une adresse dans le champ "Adresse du projet"
-- Après 3 caractères, une recherche est déclenchée (avec un délai de 300ms)
-- Quand l'utilisateur sélectionne une suggestion :
-  - Le champ **Adresse** reçoit le nom de rue (`f.properties.name`)
-  - Le champ **Code postal** se remplit automatiquement (`f.properties.postcode`)
-  - Le champ **Ville** se remplit automatiquement (`f.properties.city`)
-- Les champs Code postal et Ville sont en **lecture seule** (remplis uniquement par l'autocomplete)
+DQE Software est un prestataire spécialisé dans la **qualification de données**. KparK a un contrat avec eux. Nous utilisons 3 endpoints :
 
-### 3.3 Données envoyées au backend
-
-```javascript
+### 5.1 Validation email — `DQEEMAILLOOKUP`
+Exemple :
+```
+GET /DQEEMAILLOOKUP/?Email=test@exemple.fr&Licence=XXX
+```
+Réponse :
+```json
 {
-  civilite: 'monsieur' | 'madame' | '',
-  prenom: 'Jean',
-  nom: 'Dupont',
-  email: 'jean@exemple.fr',
-  telephone: '0612345678',
-  adresse: '27 rue de Rieussec',
-  codePostal: '78220',
-  ville: 'Viroflay',
-  message: 'Texte libre...',
-  ouvertures: ['fenetre', 'porte-fenetre']  // tableau de valeurs
+  "1": {
+    "eMail": "test@exemple.fr",
+    "IdError": "00",
+    "Redressement": 0
+  }
+}
+```
+- `IdError = "00"` → email valide
+- Sinon → on bloque l'envoi avec un message clair
+
+### 5.2 Validation téléphone — `TEL`
+Exemple :
+```
+GET /TEL/?Tel=0612345678&Licence=XXX
+```
+Réponse :
+```json
+{
+  "1": {
+    "Tel": "0612345678",
+    "Operator": "SFR",
+    "Type": "MOBILE",
+    "Geolocation": "METROPOLE"
+  }
+}
+```
+En plus de valider, DQE nous dit l'opérateur et si c'est un mobile ou un fixe.
+
+### 5.3 Normalisation adresse — `RNVP` (la plus importante)
+C'est cet appel qui nous donne le **code IRIS** (la clé pour la sectorisation fine).
+
+```
+GET /RNVP/?Adresse=27 RUE RIEUSSEC 78220 VIROFLAY&Pays=FRA&Instance=0&Licence=XXX
+```
+Réponse :
+```json
+{
+  "1": {
+    "Adresse": "27 RUE RIEUSSEC",
+    "CodePostal": "78220",
+    "Localite": "VIROFLAY",
+    "Latitude": "48.80001",
+    "Longitude": "2.171338",
+    "IDLocalite": "78686",
+    "iris": "0107",
+    "DQELibErreur": "OK",
+    "DQECodeErreur": "0"
+  }
 }
 ```
 
-### 3.4 Validation côté client
-
-Champs obligatoires validés avant envoi :
-- **Prénom** : minimum 2 caractères
-- **Nom** : minimum 2 caractères
-- **Téléphone** : format valide (8+ chiffres)
-- **Email** : format email valide
-- **Ouverture** : au moins un type sélectionné (étape 1)
+**Construction de l'IRIS complet** : on concatène `IDLocalite` + `iris` = **786860107** (9 chiffres).
 
 ---
 
-## 4. Backend (`api/devis.js`)
+## 6. Le proxy DQE — comment on cache la licence
 
-### 4.1 Authentification Salesforce
+Le code de `api/dqe.js` (version simplifiée) :
 
-Le backend utilise le flux **OAuth 2.0 Client Credentials** :
+```javascript
+const ENDPOINT_MAP = {
+  address: () => process.env.DQE_ENDPOINT_ADDRESS, // RNVP
+  email: () => process.env.DQE_ENDPOINT_EMAIL,     // DQEEMAILLOOKUP
+  phone: () => process.env.DQE_ENDPOINT_TEL,       // TEL
+  cp: () => 'CP',
+  adr: () => 'ADR',
+};
 
-```
-POST {SF_LOGIN_URL}/services/oauth2/token
-  grant_type=client_credentials
-  client_id={SF_CLIENT_ID}
-  client_secret={SF_CLIENT_SECRET}
-```
+module.exports = async function handler(req, res) {
+  const { type, ...dqeParams } = req.query;
+  const endpoint = ENDPOINT_MAP[type]();
 
-Cela renvoie un `access_token` et une `instance_url` utilisés pour les appels API REST.
+  const url = new URL(`${process.env.DQE_URL}/${endpoint}/`);
+  Object.entries(dqeParams).forEach(([k, v]) => url.searchParams.set(k, v));
+  url.searchParams.set('Licence', process.env.DQE_LICENCE);
 
-### 4.2 Variables d'environnement (Vercel)
-
-| Variable | Description | Exemple |
-|----------|-------------|---------|
-| `SF_LOGIN_URL` | URL de login du sandbox | `https://kpark--kube3.sandbox.my.salesforce.com` |
-| `SF_CLIENT_ID` | Client ID de l'External Client App SF | *(secret)* |
-| `SF_CLIENT_SECRET` | Client Secret de l'External Client App SF | *(secret)* |
-
-Ces variables sont configurées dans **Vercel → Settings → Environment Variables**.
-
-### 4.3 Mapping formulaire → Salesforce
-
-L'objet Salesforce cible est **`Import__c`** (étiquette : "Fiche contact (interne, externe)").
-
-| Champ formulaire | Champ SF (Import__c) | Type SF | Valeur |
-|-----------------|----------------------|---------|--------|
-| Nom | `nomCompte__c` | Texte(80) | Saisie utilisateur |
-| Prénom | `prenomCompte__c` | Texte(40) | Saisie utilisateur |
-| Civilité | `civiliteCompte__c` | Liste de sélection | `Mme.` ou `M.` |
-| Email | `emailCompte__c` | E-mail | Saisie utilisateur |
-| Téléphone | `telephoneMobileCompte__c` | Téléphone | Saisie utilisateur |
-| Adresse | `adresseGeolocalisation__c` | Texte(255) | Nom de rue (autocomplete) |
-| Code postal | `codePostalCompte__c` | Texte(20) | Autocomplete |
-| Ville | `villeCompte__c` | Texte(40) | Autocomplete |
-| *(fixe)* | `nomFichierSource__c` | Texte(255) | `formulaire_site_kpark.fr` |
-| *(fixe)* | `source__c` | Liste de sélection | `44 - Formulaire site KparK` |
-| *(fixe)* | `callSource__c` | Texte(255) | `44 - Formulaire site KparK` |
-| Message | `Description__c` | *(à confirmer)* | Saisie utilisateur |
-
-### 4.4 Mapping des ouvertures → champs quantité
-
-| Valeur formulaire | Champ SF (Import__c) | Valeur |
-|-------------------|----------------------|--------|
-| `fenetre` | `quantiteFenetre__c` | `1` |
-| `porte-fenetre` | `quantitePorteFenetre__c` | `1` |
-| `baie-vitree` | `quantiteCoulissant__c` | `1` |
-
-### 4.5 Flux d'exécution
-
-```
-1. Réception POST /api/devis
-2. Validation des champs obligatoires (prenom, nom, email, telephone)
-3. Authentification OAuth vers Salesforce
-4. Construction du payload Import__c
-5. POST vers /services/data/v59.0/sobjects/Import__c
-6. Si succès → réponse 200 { success: true, importId: "..." }
-7. Si erreur → réponse 500 avec détails de l'erreur SF
+  const r = await fetch(url.toString());
+  const data = await r.json();
+  return res.status(r.status).json(data);
+};
 ```
 
-### 4.6 Gestion des erreurs
-
-| Code HTTP | Cas |
-|-----------|-----|
-| `405` | Méthode autre que POST |
-| `400` | Champs obligatoires manquants |
-| `500` | Erreur auth SF / Erreur création Import / Erreur serveur |
-
-Les erreurs Salesforce sont loguées dans la console Vercel (`console.error`) et renvoyées dans le champ `details` de la réponse JSON pour faciliter le debug.
-
----
-
-## 5. Côté Salesforce — Ce qui se passe après
-
-Quand un enregistrement `Import__c` est créé via l'API :
-
-1. **Les automations Salesforce** (triggers/flows) prennent le relais
-2. Elles créent automatiquement :
-   - Un **Compte** (Person Account) avec les infos du client
-   - Un **Chantier** lié au compte
-   - Un **Projet** (Opportunity) lié au compte et au chantier
-
-> **Important** : La sectorisation doit être configurée correctement côté Salesforce pour que le chantier soit rattaché à une entité commerciale et une entité de service.
-
----
-
-## 6. Configuration Salesforce requise
-
-### 6.1 External Client App
-
-Une application externe a été créée dans Salesforce (Setup → External Client Apps) avec :
-- **Client Credentials Flow** activé
-- Un **Run As User** configuré (utilisateur d'intégration)
-- Les **OAuth Scopes** nécessaires (`api`, `refresh_token`)
-
-### 6.2 Permissions du Run As User
-
-L'utilisateur d'intégration doit avoir :
-- Accès en **lecture/écriture** sur l'objet `Import__c`
-- Accès aux champs listés dans le mapping (section 4.3)
-- Profil ou Permission Set avec les droits API activés
-
----
-
-## 7. Déploiement
-
-Le site est hébergé sur **Vercel** et se déploie automatiquement depuis la branche `main` du repo GitHub `Steve02022001/guiona-site`.
-
-### Workflow de déploiement
+### Schéma de la sécurité
 
 ```
-1. Modification du code sur une branche feature
-2. Push vers GitHub
-3. Création d'une Pull Request vers main
-4. Merge de la PR
-5. Vercel détecte le push sur main et déploie automatiquement (~1 min)
-```
+ ❌ Mauvaise pratique :
+ Navigateur ─────fetch(DQE, Licence=XXX)─────▶ DQE
+   (la clé est visible dans F12 → n'importe qui peut la copier)
 
-### Structure des fichiers
-
-```
-guiona-site/
-├── api/
-│   └── devis.js          ← Fonction serverless (auto-déployée par Vercel)
-├── devis.html             ← Formulaire de devis
-├── index.html             ← Page d'accueil
-├── technologie-pvc.html   ← Page technologie (CTA header corrigé)
-├── inspirations.html      ← Page inspirations (CTA header corrigé)
-└── ...
+ ✅ Ce qu'on a fait :
+ Navigateur ──fetch(/api/dqe)──▶ Vercel ──+ Licence──▶ DQE
+                                (clé cachée ici)
 ```
 
 ---
 
-## 8. Points d'attention / À faire
+## 7. La sectorisation Salesforce
 
-- [ ] **Sectorisation** : Configurer la sectorisation SF pour que les chantiers soient rattachés aux bonnes entités
-- [ ] **Champ Description__c** : Vérifier que ce champ existe sur Import__c (sinon trouver le bon nom API)
-- [ ] **Valeurs picklist civilité** : Vérifier que `Mme.` et `M.` sont des valeurs valides dans la picklist `civiliteCompte__c`
-- [ ] **Valeur picklist source** : Vérifier que `44 - Formulaire site KparK` est une valeur valide dans la picklist `source__c`
-- [ ] **Mapping baie vitrée** : Confirmer que `quantiteCoulissant__c` est le bon champ pour "Baie vitrée"
-- [ ] **Suppression des comptes test** : Nettoyer les comptes de test créés pendant le développement
+### 7.1 La table `Sectorisation__c`
+- **49 003 enregistrements** dans le sandbox Kube3
+- Chaque ligne = une zone géographique + le magasin responsable
+
+| Champ | Type | Exemple |
+|---|---|---|
+| `IRIS__c` | Texte(15), indexé | `786860107` |
+| `codePostalAdm__c` | Texte(50), indexé | `78220` |
+| `codeMagasin__c` | Texte(20) | `MAG0057` |
+| `libelleMagasin__c` | Texte(100) | `PARIS LA FAYETTE` |
+
+### 7.2 Les 5 requêtes progressives
+
+Quand on cherche le magasin qui couvre l'adresse du client, on lance jusqu'à 5 requêtes SOQL dans l'ordre de précision décroissante :
+
+1. **IRIS exact (9 chiffres)** → le plus précis
+2. **IRIS commune (5 premiers chiffres + LIKE)** → au niveau commune
+3. **Code postal exact** → au niveau code postal
+4. **Code postal préfixe (LIKE)** → codes postaux commençant par…
+5. **Département (2 premiers chiffres)** → le plus large
+
+Dès qu'une requête renvoie un résultat avec un `codeMagasin__c`, on s'arrête.
+
+### 7.3 Le code de `api/check-sectorisation.js` (extrait clé)
+
+```javascript
+const queries = [];
+if (fullIris) {
+  queries.push(`SELECT ... WHERE IRIS__c = '${fullIris}' LIMIT 1`);
+  queries.push(`SELECT ... WHERE IRIS__c LIKE '${fullIris.substring(0, 5)}%' LIMIT 1`);
+}
+queries.push(`SELECT ... WHERE codePostalAdm__c = '${cp}' LIMIT 1`);
+queries.push(`SELECT ... WHERE codePostalAdm__c LIKE '${cp}%' LIMIT 1`);
+queries.push(`SELECT ... WHERE codePostalAdm__c LIKE '${dep}%' LIMIT 1`);
+
+for (const soql of queries) {
+  const result = await runQuery(soql);
+  if (result.records.length > 0) {
+    return { covered: true, codeMagasin: result.records[0].codeMagasin__c };
+  }
+}
+return { covered: false };
+```
+
+---
+
+## 8. Flux complet — séquence détaillée
+
+```
+┌─────────┐   ┌────────────┐   ┌─────┐    ┌───────────┐
+│Visiteur │   │ devis.html │   │ DQE │    │Salesforce │
+└────┬────┘   └─────┬──────┘   └──┬──┘    └─────┬─────┘
+     │              │             │              │
+     │ Remplit      │             │              │
+     │──────────────▶             │              │
+     │              │             │              │
+     │ Clic         │             │              │
+     │ "Suivant"    │             │              │
+     │──────────────▶             │              │
+     │              │             │              │
+     │              │ POST email  │              │
+     │              │─────────────▶              │
+     │              │ POST phone  │              │
+     │              │─────────────▶              │
+     │              │ POST RNVP   │              │
+     │              │─────────────▶              │
+     │              │◀──IRIS─────│              │
+     │              │             │              │
+     │              │ Check sectorisation        │
+     │              │─────────────────────────────▶
+     │              │◀──────codeMagasin──────────│
+     │              │             │              │
+     │◀── Étape 2 ──│             │              │
+     │              │             │              │
+     │ Remplit      │             │              │
+     │──────────────▶             │              │
+     │ Clic         │             │              │
+     │ "Envoyer"    │             │              │
+     │──────────────▶             │              │
+     │              │ POST devis  │              │
+     │              │────────────────────────────▶
+     │              │             │  [Automations SF]
+     │              │             │  Création :
+     │              │             │  - Compte
+     │              │             │  - Chantier
+     │              │             │  - Projet
+     │              │◀───success─────────────────│
+     │◀──"merci"────│             │              │
+```
+
+---
+
+## 9. Mapping des champs formulaire → Salesforce `Import__c`
+
+| Champ formulaire | Champ SF | Type |
+|---|---|---|
+| Nom | `nomCompte__c` | Texte(80) |
+| Prénom | `prenomCompte__c` | Texte(40) |
+| Civilité | `civiliteCompte__c` | Picklist (M. / Mme.) |
+| Email | `emailCompte__c` | E-mail |
+| Téléphone | `telephoneMobileCompte__c` | Téléphone |
+| Code postal | `codePostalCompte__c` | Texte(20) |
+| Ville | `villeCompte__c` | Texte(40) |
+| Adresse | `adresseGeolocalisation__c` | Texte(255) |
+| Habitat | `typeHabitation__c` | Picklist |
+| Produit Fenêtre × N | `quantiteFenetre__c` + `materiauxFenetre__c` | Nombre + Picklist |
+| Produit Porte-fenêtre × N | `quantitePorteFenetre__c` + `materiauxPorteFenetre__c` | Nombre + Picklist |
+| Produit Baie vitrée × N | `quantiteCoulissant__c` + `materiauxCoulissant__c` | Nombre + Picklist |
+| Situation + Message | `Description__c` | Texte long |
+| *(fixe)* | `nomFichierSource__c` = `formulaire_site_kpark.fr` | |
+| *(fixe)* | `source__c` = `44 - Formulaire site KparK` | |
+| *(fixe)* | `callSource__c` = `44 - Formulaire site KparK` | |
+
+---
+
+## 10. Variables d'environnement Vercel
+
+Tout est configuré dans **Vercel → Settings → Environment Variables** (et non dans le code, pour des raisons de sécurité).
+
+| Variable | Usage |
+|---|---|
+| `SF_LOGIN_URL` | URL du sandbox Salesforce |
+| `SF_CLIENT_ID` | Client ID de l'application OAuth SF |
+| `SF_CLIENT_SECRET` | Client Secret OAuth SF |
+| `DQE_URL` (ou `URL_DQE`) | `https://prod3.dqe-software.com` |
+| `DQE_LICENCE` | Clé API DQE |
+| `DQE_ENDPOINT_EMAIL` | `DQEEMAILLOOKUP` |
+| `DQE_ENDPOINT_TEL` | `TEL` |
+| `DQE_ENDPOINT_ADDRESS` | `RNVP` |
+
+---
+
+## 11. Gestion des erreurs côté utilisateur
+
+Quand une validation échoue, le bouton "Étape suivante" est temporairement désactivé et le formulaire affiche un message contextualisé :
+
+| Problème détecté | Message affiché | Endroit |
+|---|---|---|
+| Email invalide ou inexistant | *"Email invalide ou inexistant, merci de vérifier."* | Sous le champ email |
+| Téléphone invalide | *"Numéro de téléphone invalide."* | Sous le champ téléphone |
+| CP non couvert par Guiona | *"Désolé, Guiona n'est pas encore présent dans votre secteur."* | Sous le champ CP |
+| Erreur réseau | *"Erreur réseau, veuillez réessayer."* | Sous le champ CP |
+
+---
+
+## 12. Ce qui a changé par rapport à la version initiale
+
+| Avant | Après |
+|---|---|
+| Formulaire en 3 étapes | **2 étapes** (aligné kpark.fr) |
+| Autocomplete adresse gouv.fr uniquement | + **validation DQE** (email, tel, adresse) |
+| Sectorisation par code postal uniquement | **Sectorisation par IRIS** avec fallback CP (5 requêtes progressives) |
+| Adresse, CP, Ville tous obligatoires | **Adresse facultative**, CP + Ville saisissables directement |
+| Pas de qualification des données | Toutes les données sont qualifiées **avant** envoi en SF |
+
+---
+
+## 13. Déploiement
+
+- **Hébergement** : Vercel (plan Hobby)
+- **Repo GitHub** : `Steve02022001/guiona-site`
+- **Branche principale** : `main`
+- **Déploiement automatique** : à chaque push sur `main`, Vercel redéploie en ~1 min
+
+---
+
+## 14. Points d'attention / À venir
+
+- [ ] Remplacer l'autocomplete adresse gouv.fr par l'autocomplete DQE (`/CP/` + `/ADR/`) pour une UX 100% alignée kpark.fr
+- [ ] Gérer les "demandes non couvertes" (stocker dans un objet dédié pour relance quand Guiona s'étend)
+- [ ] Remplacer la licence DQE par une clé dédiée Guiona (pour ne pas utiliser celle de kpark.fr en prod)
+- [ ] Whitelister les IPs Vercel chez DQE si passage en prod volumétrique
+- [ ] Mettre en place un monitoring des erreurs (Sentry ou équivalent)
