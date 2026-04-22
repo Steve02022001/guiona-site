@@ -39,8 +39,19 @@
   .nav-links { display: flex; gap: 2.5rem; list-style: none; }
   .nav-links a { font-size: 0.82rem; font-weight: 400; color: var(--text-muted); text-decoration: none; letter-spacing: 0.06em; text-transform: uppercase; transition: color 0.2s; }
   .nav-links a:hover { color: var(--anthracite); }
-  .btn-cta-nav { background: var(--anthracite); color: var(--white); border: none; padding: 0.75rem 2rem; font-family: var(--font-body); font-size: 0.78rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; text-decoration: none; transition: background 0.2s; }
+  .btn-cta-nav { background: var(--anthracite); color: var(--white); border: none; padding: 0.75rem 2rem; font-family: var(--font-body); font-size: 0.78rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; text-decoration: none; transition: background 0.2s; white-space: nowrap; }
   .btn-cta-nav:hover { background: var(--copper); }
+
+  .hamburger { display: none; background: none; border: none; cursor: pointer; padding: 0.5rem; }
+  .hamburger span { display: block; width: 22px; height: 2px; background: var(--anthracite); margin: 5px 0; transition: 0.3s; }
+  .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+  .hamburger.open span:nth-child(2) { opacity: 0; }
+  .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+  .mobile-menu { display: none; position: fixed; top: 68px; left: 0; right: 0; background: rgba(255,255,255,0.98); backdrop-filter: blur(16px); padding: 1.5rem; border-bottom: 1px solid var(--border); z-index: 99; }
+  .mobile-menu.open { display: block; }
+  .mobile-menu a { display: block; padding: 0.8rem 0; font-size: 0.88rem; color: var(--text-dark); text-decoration: none; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); }
+  .mobile-menu a:last-child { border-bottom: none; }
 
   /* ── LAYOUT ── */
   .page-wrapper {
@@ -659,9 +670,11 @@
   /* ── RESPONSIVE MOBILE ── */
   @media (max-width: 768px) {
 
-    nav { padding: 0 1.5rem; }
+    nav { padding: 0 1.2rem; }
     .nav-links { display: none; }
-    .btn-cta-nav { padding: 0.5rem 1rem; font-size: 0.7rem; }
+    .hamburger { display: block; order: -1; }
+    .nav-logo { flex: 1; text-align: center; }
+    .btn-cta-nav { padding: 0.55rem 1.2rem; font-size: 0.68rem; }
 
     .page-wrapper {
       grid-template-columns: 1fr;
@@ -736,6 +749,9 @@
 
 <!-- NAV -->
 <nav>
+  <button class="hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
   <a href="index.html" class="nav-logo">Guiona</a>
   <ul class="nav-links">
     <li><a href="index.html">Accueil</a></li>
@@ -746,6 +762,14 @@
   </ul>
   <a href="devis.html" class="btn-cta-nav">Étude gratuite</a>
 </nav>
+<div class="mobile-menu" id="mobile-menu">
+  <a href="index.html">Accueil</a>
+  <a href="#">Nos Produits</a>
+  <a href="technologie-pvc.html">Technologie PVC</a>
+  <a href="inspirations.html">Inspirations</a>
+  <a href="#">Blog</a>
+  <a href="devis.html" style="color:var(--copper); font-weight:500;">Étude gratuite</a>
+</div>
 
 <div class="page-wrapper">
 
@@ -892,18 +916,23 @@
           <input type="text" class="field-input" id="prenom" placeholder="Paul">
           <span class="field-error" id="err-prenom">Veuillez saisir votre prénom</span>
         </div>
-        <div class="field-group">
+        <div class="field-group" style="position:relative;">
           <label class="field-label">Code postal *</label>
-          <input type="text" class="field-input" id="codepostal" placeholder="75020" maxlength="5" inputmode="numeric">
+          <input type="text" class="field-input" id="codepostal" placeholder="75020" maxlength="5" inputmode="numeric" autocomplete="off" oninput="searchCP(this.value)">
+          <div id="cp-suggestions" style="
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+            background: #fff; border: 1.5px solid rgba(184,115,51,0.3);
+            border-top: none; display: none; max-height: 220px; overflow-y: auto;
+          "></div>
           <span class="field-error" id="err-cp">Désolé, Guiona n'est pas encore présent dans votre secteur.</span>
         </div>
-        <div class="field-group">
+        <div class="field-group" style="position:relative;">
           <label class="field-label">Ville *</label>
-          <input type="text" class="field-input" id="ville" placeholder="Paris">
+          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
         </div>
         <div class="field-group span2" style="position:relative;">
           <label class="field-label">Adresse</label>
-          <input type="text" class="field-input" id="adresse" placeholder="1 rue Jean Jaurès" autocomplete="off" oninput="searchAddress(this.value)">
+          <input type="text" class="field-input" id="adresse" placeholder="1 rue Jean Jaurès" autocomplete="off" oninput="searchAdresse(this.value)">
           <div id="adresse-suggestions" style="
             position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
             background: #fff; border: 1.5px solid rgba(184,115,51,0.3);
@@ -1239,50 +1268,97 @@
     document.getElementById('progress-label').textContent = `Étape ${current - 1} / 2`;
   }
 
-  // Validation et soumission
-  // Autocomplétion adresse API gouvernement
-  let addrTimeout = null;
+  // ── Mobile menu ──
+  function toggleMobileMenu() {
+    document.querySelector('.hamburger').classList.toggle('open');
+    document.getElementById('mobile-menu').classList.toggle('open');
+  }
 
-  function searchAddress(val) {
+  // ── Autocomplete CP via DQE /CP/ ──
+  let cpTimeout = null;
+  let selectedIDLocalite = null;
+
+  function makeSuggestionItem(text, onClick) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    div.style.cssText = 'padding:0.75rem 1.1rem; font-size:0.88rem; cursor:pointer; border-bottom:1px solid rgba(0,0,0,0.06); font-family:Jost,sans-serif; color:#1C1C1E; transition:background 0.15s;';
+    div.onmouseenter = () => div.style.background = 'rgba(184,115,51,0.06)';
+    div.onmouseleave = () => div.style.background = '';
+    div.onclick = onClick;
+    return div;
+  }
+
+  function searchCP(val) {
+    const box = document.getElementById('cp-suggestions');
+    clearTimeout(cpTimeout);
+    if (val.length < 2) { box.style.display = 'none'; return; }
+
+    cpTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/dqe?' + new URLSearchParams({ type: 'cp', CodePostal: val, Alpha: false, Instance: 0, Pays: 'FRA' }));
+        const data = await res.json();
+        const items = Object.values(data).filter(v => v && typeof v === 'object' && v.CodePostal);
+        if (items.length === 0) { box.style.display = 'none'; return; }
+        box.innerHTML = '';
+        items.forEach(item => {
+          const label = `${item.CodePostal} — ${item.Localite}`;
+          box.appendChild(makeSuggestionItem(label, () => {
+            document.getElementById('codepostal').value = item.CodePostal;
+            document.getElementById('ville').value = item.Localite;
+            selectedIDLocalite = item.IDLocalite || null;
+            box.style.display = 'none';
+          }));
+        });
+        box.style.display = 'block';
+      } catch { box.style.display = 'none'; }
+    }, 250);
+  }
+
+  // ── Autocomplete adresse via DQE /ADR/ ──
+  let adrTimeout = null;
+
+  function searchAdresse(val) {
     const box = document.getElementById('adresse-suggestions');
-    clearTimeout(addrTimeout);
+    clearTimeout(adrTimeout);
     if (val.length < 3) { box.style.display = 'none'; return; }
 
-    addrTimeout = setTimeout(() => {
-      fetch('https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(val) + '&limit=6')
-        .then(r => r.json())
-        .then(data => {
-          if (!data.features || data.features.length === 0) {
-            box.style.display = 'none'; return;
-          }
-          box.innerHTML = '';
-          data.features.forEach(f => {
-            const label = f.properties.label;
-            const div = document.createElement('div');
-            div.textContent = label;
-            div.style.cssText = 'padding:0.75rem 1.1rem; font-size:0.88rem; cursor:pointer; border-bottom:1px solid rgba(0,0,0,0.06); font-family:Jost,sans-serif; color:#1C1C1E; transition:background 0.15s;';
-            div.onmouseenter = () => div.style.background = 'rgba(184,115,51,0.06)';
-            div.onmouseleave = () => div.style.background = '';
-            div.onclick = () => {
-              document.getElementById('adresse').value = f.properties.name || label;
-              document.getElementById('codepostal').value = f.properties.postcode || '';
-              document.getElementById('ville').value = f.properties.city || '';
-              box.style.display = 'none';
-            };
-            box.appendChild(div);
-          });
-          box.style.display = 'block';
-        })
-        .catch(() => box.style.display = 'none');
+    const cp = document.getElementById('codepostal').value.trim();
+    const idLocalite = selectedIDLocalite || '';
+
+    adrTimeout = setTimeout(async () => {
+      try {
+        const params = { type: 'adr', Adresse: val, Pays: 'FRA', Instance: 0 };
+        if (idLocalite) params.IDLocalite = idLocalite;
+        else if (cp) params.CodePostal = cp;
+
+        const res = await fetch('/api/dqe?' + new URLSearchParams(params));
+        const data = await res.json();
+        const items = Object.values(data).filter(v => v && typeof v === 'object' && v.Adresse);
+        if (items.length === 0) { box.style.display = 'none'; return; }
+        box.innerHTML = '';
+        items.forEach(item => {
+          const label = `${item.Adresse}, ${item.CodePostal} ${item.Localite}`;
+          box.appendChild(makeSuggestionItem(label, () => {
+            document.getElementById('adresse').value = item.Adresse;
+            document.getElementById('codepostal').value = item.CodePostal || cp;
+            document.getElementById('ville').value = item.Localite || document.getElementById('ville').value;
+            if (item.IDLocalite) selectedIDLocalite = item.IDLocalite;
+            box.style.display = 'none';
+          }));
+        });
+        box.style.display = 'block';
+      } catch { box.style.display = 'none'; }
     }, 300);
   }
 
   // Fermer suggestions si clic ailleurs
   document.addEventListener('click', e => {
-    if (!e.target.closest('#adresse-suggestions') && e.target.id !== 'adresse') {
-      const box = document.getElementById('adresse-suggestions');
-      if (box) box.style.display = 'none';
-    }
+    ['adresse-suggestions', 'cp-suggestions'].forEach(id => {
+      const box = document.getElementById(id);
+      if (box && !e.target.closest('#' + id) && e.target.id !== id.replace('-suggestions', '') && e.target.id !== 'codepostal') {
+        box.style.display = 'none';
+      }
+    });
   });
 
   async function submitForm() {
@@ -1299,7 +1375,6 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Envoi en cours...';
 
-    // Construire la liste des produits détaillés
     const produits = selections.produits.map(p => ({
       produit: p,
       type: selections.details[p].type,
@@ -1307,46 +1382,42 @@
       materiau: selections.details[p].materiau,
     }));
 
+    const payload = {
+      civilite: selections.civilite || '',
+      situation: selections.situation || '',
+      habitat: selections.habitat || '',
+      prenom: document.getElementById('prenom').value.trim(),
+      nom: document.getElementById('nom').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      telephone: document.getElementById('tel').value.trim(),
+      adresse: document.getElementById('adresse').value.trim(),
+      codePostal: document.getElementById('codepostal').value.trim(),
+      ville: document.getElementById('ville').value.trim(),
+      message: document.getElementById('message').value.trim(),
+      produits: produits,
+    };
+
+    document.getElementById('step-2').classList.remove('active');
+    document.getElementById('confirmation').classList.add('active');
+    document.getElementById('progress').style.width = '100%';
+    document.getElementById('progress-label').textContent = 'Envoyé !';
+    ['ind-1','ind-2'].forEach(id => {
+      document.getElementById(id).classList.remove('active');
+      document.getElementById(id).classList.add('done');
+    });
+
     try {
       const response = await fetch('/api/devis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          civilite: selections.civilite || '',
-          situation: selections.situation || '',
-          habitat: selections.habitat || '',
-          prenom: document.getElementById('prenom').value.trim(),
-          nom: document.getElementById('nom').value.trim(),
-          email: document.getElementById('email').value.trim(),
-          telephone: document.getElementById('tel').value.trim(),
-          adresse: document.getElementById('adresse').value.trim(),
-          codePostal: document.getElementById('codepostal').value.trim(),
-          ville: document.getElementById('ville').value.trim(),
-          message: document.getElementById('message').value.trim(),
-          produits: produits,
-        }),
+        body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        console.error('Erreur API:', errData);
-        throw new Error(errData.error || 'Erreur serveur');
+        console.error('Erreur API (envoi en arrière-plan):', errData);
       }
-
-      document.getElementById('step-2').classList.remove('active');
-      document.getElementById('confirmation').classList.add('active');
-      document.getElementById('progress').style.width = '100%';
-      document.getElementById('progress-label').textContent = 'Envoyé !';
-      ['ind-1','ind-2'].forEach(id => {
-        document.getElementById(id).classList.remove('active');
-        document.getElementById(id).classList.add('done');
-      });
-
     } catch (error) {
-      console.error('Erreur soumission:', error);
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Envoyer ma demande';
-      alert('Une erreur est survenue. Veuillez réessayer ou nous contacter directement.');
+      console.error('Erreur soumission (arrière-plan):', error);
     }
   }
 </script>
