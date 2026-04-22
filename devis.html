@@ -892,6 +892,14 @@
           <input type="text" class="field-input" id="prenom" placeholder="Paul">
           <span class="field-error" id="err-prenom">Veuillez saisir votre prénom</span>
         </div>
+        <div class="field-group">
+          <label class="field-label">Code postal *</label>
+          <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Ville *</label>
+          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
+        </div>
         <div class="field-group span2" style="position:relative;">
           <label class="field-label">Adresse *</label>
           <input type="text" class="field-input" id="adresse" placeholder="1 rue Jean Jaurès" autocomplete="off" oninput="searchAddress(this.value)">
@@ -900,14 +908,6 @@
             background: #fff; border: 1.5px solid rgba(184,115,51,0.3);
             border-top: none; display: none; max-height: 220px; overflow-y: auto;
           "></div>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Code postal *</label>
-          <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Ville *</label>
-          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
         </div>
         <div class="field-group">
           <label class="field-label">Téléphone *</label>
