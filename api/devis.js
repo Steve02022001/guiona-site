@@ -26,7 +26,7 @@ module.exports = async function handler(req, res) {
     civilite, situation, habitat,
     prenom, nom, email, telephone,
     adresse, codePostal, ville, message,
-    codeMagasin, produits,
+    produits,
   } = req.body;
 
   if (!prenom || !nom || !email || !telephone) {
@@ -89,7 +89,6 @@ module.exports = async function handler(req, res) {
 
     const descLines = [];
     if (situation) descLines.push(`Situation: ${situation}`);
-    if (codeMagasin) descLines.push(`Code magasin (sectorisation): ${codeMagasin}`);
     if (message) descLines.push(message);
     if (descLines.length) importPayload.Description__c = descLines.join('\n');
 

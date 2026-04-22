@@ -1142,7 +1142,6 @@
           nextBtn.textContent = originalLabel;
           return;
         }
-        selections.codeMagasin = data.codeMagasin || null;
         cpInput.classList.remove('error');
         cpErr.style.display = 'none';
       } catch (e) {
@@ -1266,7 +1265,6 @@
           codePostal: document.getElementById('codepostal').value.trim(),
           ville: document.getElementById('ville').value.trim(),
           message: document.getElementById('message').value.trim(),
-          codeMagasin: selections.codeMagasin || null,
           produits: produits,
         }),
       });
