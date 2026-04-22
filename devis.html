@@ -1317,6 +1317,12 @@
   // ── Autocomplete adresse via DQE /ADR/ ──
   let adrTimeout = null;
 
+  function showAdresseHint(text) {
+    const box = document.getElementById('adresse-suggestions');
+    box.innerHTML = `<div style="padding:0.75rem 1.1rem; font-size:0.85rem; color:#6E6E73; font-style:italic; font-family:Jost,sans-serif;">${text}</div>`;
+    box.style.display = 'block';
+  }
+
   function searchAdresse(val) {
     const box = document.getElementById('adresse-suggestions');
     clearTimeout(adrTimeout);
@@ -1324,6 +1330,11 @@
 
     const cp = document.getElementById('codepostal').value.trim();
     const idLocalite = selectedIDLocalite || '';
+
+    if (!cp && !idLocalite) {
+      showAdresseHint('Saisissez d\'abord votre code postal pour activer l\'autocomplete.');
+      return;
+    }
 
     adrTimeout = setTimeout(async () => {
       try {
