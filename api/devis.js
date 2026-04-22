@@ -1,9 +1,33 @@
+const MATERIAU_MAP = {
+  'fenetre': 'materiauxFenetre__c',
+  'porte-fenetre': 'materiauxPorteFenetre__c',
+  'baie-vitree': 'materiauxCoulissant__c',
+};
+
+const QUANTITE_MAP = {
+  'fenetre': 'quantiteFenetre__c',
+  'porte-fenetre': 'quantitePorteFenetre__c',
+  'baie-vitree': 'quantiteCoulissant__c',
+};
+
+function parseQuantite(q) {
+  if (!q) return null;
+  if (q === '10 et plus') return 10;
+  const n = parseInt(q, 10);
+  return isNaN(n) ? null : n;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { civilite, prenom, nom, email, telephone, adresse, codePostal, ville, message, ouvertures } = req.body;
+  const {
+    civilite, situation, habitat,
+    prenom, nom, email, telephone,
+    adresse, codePostal, ville, message,
+    produits,
+  } = req.body;
 
   if (!prenom || !nom || !email || !telephone) {
     return res.status(400).json({ error: 'Champs obligatoires manquants' });
@@ -29,8 +53,8 @@ module.exports = async function handler(req, res) {
     const { access_token, instance_url } = await tokenRes.json();
     const sfApi = `${instance_url}/services/data/v59.0`;
 
-    const products = Array.isArray(ouvertures) ? ouvertures : [];
     const civiliteMap = { madame: 'Mme.', monsieur: 'M.' };
+    const habitatMap = { pavillon: 'Pavillon', appartement: 'Appartement' };
 
     const importPayload = {
       nomCompte__c: nom,
@@ -46,11 +70,27 @@ module.exports = async function handler(req, res) {
       callSource__c: '44 - Formulaire site KparK',
     };
 
-    if (products.includes('fenetre')) importPayload.quantiteFenetre__c = 1;
-    if (products.includes('porte-fenetre')) importPayload.quantitePorteFenetre__c = 1;
-    if (products.includes('baie-vitree')) importPayload.quantiteCoulissant__c = 1;
+    if (habitat && habitatMap[habitat]) {
+      importPayload.typeHabitation__c = habitatMap[habitat];
+    }
 
-    if (message) importPayload.Description__c = message;
+    const list = Array.isArray(produits) ? produits : [];
+    for (const item of list) {
+      const type = item?.type;
+      const qty = parseQuantite(item?.quantite);
+      const mat = item?.materiau;
+      if (type && qty !== null && QUANTITE_MAP[type]) {
+        importPayload[QUANTITE_MAP[type]] = qty;
+      }
+      if (type && mat && MATERIAU_MAP[type]) {
+        importPayload[MATERIAU_MAP[type]] = mat;
+      }
+    }
+
+    const descLines = [];
+    if (situation) descLines.push(`Situation: ${situation}`);
+    if (message) descLines.push(message);
+    if (descLines.length) importPayload.Description__c = descLines.join('\n');
 
     const importRes = await fetch(`${sfApi}/sobjects/Import__c`, {
       method: 'POST',
