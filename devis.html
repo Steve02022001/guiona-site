@@ -1112,10 +1112,20 @@
       });
       if (!valid) return;
 
-      // Vérification de la sectorisation (code postal couvert ?)
       const cpInput = document.getElementById('codepostal');
       const cpErr = document.getElementById('err-cp');
+      const emailInput = document.getElementById('email');
+      const emailErr = document.getElementById('err-email');
+      const telInput = document.getElementById('tel');
+      const telErr = document.getElementById('err-tel');
+
       const cp = cpInput.value.trim();
+      const email = emailInput.value.trim();
+      const tel = telInput.value.trim();
+      const adresse = document.getElementById('adresse').value.trim();
+      const ville = document.getElementById('ville').value.trim();
+      const adresseComplete = `${adresse} ${cp} ${ville}`.trim();
+
       if (!/^\d{5}$/.test(cp)) {
         cpInput.classList.add('error');
         cpErr.textContent = 'Code postal invalide';
@@ -1127,32 +1137,76 @@
       const originalLabel = nextBtn.textContent;
       nextBtn.disabled = true;
       nextBtn.textContent = 'Vérification...';
+
+      const resetBtn = () => {
+        nextBtn.disabled = false;
+        nextBtn.textContent = originalLabel;
+      };
+
+      // Validation DQE : email, téléphone et adresse (RNVP pour IRIS) en parallèle
       try {
-        const r = await fetch('/api/check-sectorisation', {
+        const dqeCall = (params) => fetch('/api/dqe?' + new URLSearchParams(params).toString())
+          .then(r => r.json())
+          .catch(() => null);
+
+        const [emailRes, telRes, rnvpRes] = await Promise.all([
+          dqeCall({ type: 'email', Email: email }),
+          dqeCall({ type: 'phone', Tel: tel }),
+          dqeCall({ type: 'address', Adresse: adresseComplete, Pays: 'FRA', Instance: 0 }),
+        ]);
+
+        // Validation email
+        const emailData = emailRes && (emailRes['1'] || emailRes);
+        if (!emailData || (emailData.IdError && emailData.IdError !== '00' && emailData.IdError !== 0)) {
+          emailInput.classList.add('error');
+          emailErr.textContent = "Email invalide ou inexistant, merci de vérifier.";
+          emailErr.style.display = 'block';
+          resetBtn();
+          return;
+        }
+
+        // Validation téléphone (IdError doit exister, mais on accepte si on a un opérateur)
+        const telData = telRes && telRes['1'];
+        if (!telData || !telData.Operator) {
+          telInput.classList.add('error');
+          telErr.textContent = "Numéro de téléphone invalide.";
+          telErr.style.display = 'block';
+          resetBtn();
+          return;
+        }
+
+        // Récupération de l'IRIS depuis RNVP
+        let iris = null;
+        const rnvpData = rnvpRes && rnvpRes['1'];
+        if (rnvpData && rnvpData.DQECodeErreur === '0' && rnvpData.iris && rnvpData.IDLocalite) {
+          iris = `${rnvpData.IDLocalite}${rnvpData.iris}`;
+        }
+
+        // Sectorisation avec IRIS en priorité, fallback sur CP
+        const secRes = await fetch('/api/check-sectorisation', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ codePostal: cp }),
+          body: JSON.stringify({ codePostal: cp, iris }),
         });
-        const data = await r.json();
-        if (!r.ok || !data.covered) {
+        const secData = await secRes.json();
+        if (!secRes.ok || !secData.covered) {
           cpInput.classList.add('error');
           cpErr.textContent = "Désolé, Guiona n'est pas encore présent dans votre secteur.";
           cpErr.style.display = 'block';
-          nextBtn.disabled = false;
-          nextBtn.textContent = originalLabel;
+          resetBtn();
           return;
         }
+
         cpInput.classList.remove('error');
         cpErr.style.display = 'none';
       } catch (e) {
         cpErr.textContent = 'Erreur réseau, veuillez réessayer.';
         cpErr.style.display = 'block';
-        nextBtn.disabled = false;
-        nextBtn.textContent = originalLabel;
+        resetBtn();
         return;
       }
-      nextBtn.disabled = false;
-      nextBtn.textContent = originalLabel;
+
+      resetBtn();
 
       // Générer l'étape 2
       renderStep2();
