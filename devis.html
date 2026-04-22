@@ -895,6 +895,7 @@
         <div class="field-group">
           <label class="field-label">Code postal *</label>
           <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
+          <span class="field-error" id="err-cp">Désolé, Guiona n'est pas encore présent dans votre secteur.</span>
         </div>
         <div class="field-group">
           <label class="field-label">Ville *</label>
@@ -1082,7 +1083,7 @@
   }
 
   // Navigation
-  function nextStep(current) {
+  async function nextStep(current) {
     if (current === 1) {
       if (selections.produits.length === 0) { alert('Sélectionnez au moins un produit.'); return; }
       if (!selections.situation) { alert('Indiquez votre situation (propriétaire / locataire).'); return; }
@@ -1110,6 +1111,49 @@
         }
       });
       if (!valid) return;
+
+      // Vérification de la sectorisation (code postal couvert ?)
+      const cpInput = document.getElementById('codepostal');
+      const cpErr = document.getElementById('err-cp');
+      const cp = cpInput.value.trim();
+      if (!/^\d{5}$/.test(cp)) {
+        cpInput.classList.add('error');
+        cpErr.textContent = 'Code postal invalide';
+        cpErr.style.display = 'block';
+        return;
+      }
+
+      const nextBtn = document.querySelector('#step-1 .btn-next');
+      const originalLabel = nextBtn.textContent;
+      nextBtn.disabled = true;
+      nextBtn.textContent = 'Vérification...';
+      try {
+        const r = await fetch('/api/check-sectorisation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codePostal: cp }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.covered) {
+          cpInput.classList.add('error');
+          cpErr.textContent = "Désolé, Guiona n'est pas encore présent dans votre secteur.";
+          cpErr.style.display = 'block';
+          nextBtn.disabled = false;
+          nextBtn.textContent = originalLabel;
+          return;
+        }
+        selections.codeMagasin = data.codeMagasin || null;
+        cpInput.classList.remove('error');
+        cpErr.style.display = 'none';
+      } catch (e) {
+        cpErr.textContent = 'Erreur réseau, veuillez réessayer.';
+        cpErr.style.display = 'block';
+        nextBtn.disabled = false;
+        nextBtn.textContent = originalLabel;
+        return;
+      }
+      nextBtn.disabled = false;
+      nextBtn.textContent = originalLabel;
 
       // Générer l'étape 2
       renderStep2();
@@ -1222,6 +1266,7 @@
           codePostal: document.getElementById('codepostal').value.trim(),
           ville: document.getElementById('ville').value.trim(),
           message: document.getElementById('message').value.trim(),
+          codeMagasin: selections.codeMagasin || null,
           produits: produits,
         }),
       });
