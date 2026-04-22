@@ -3,7 +3,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { codePostal } = req.body || {};
+  const { codePostal, iris } = req.body || {};
 
   if (!codePostal || !/^\d{5}$/.test(codePostal)) {
     return res.status(400).json({ error: 'Code postal invalide' });
@@ -45,12 +45,16 @@ module.exports = async function handler(req, res) {
     const escape = (s) => String(s).replace(/'/g, "\\'");
     const cp = escape(codePostal);
     const dep = cp.substring(0, 2);
+    const fullIris = iris && /^\d{9}$/.test(iris) ? escape(iris) : null;
 
-    const queries = [
-      `SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c = '${cp}' AND codeMagasin__c != null LIMIT 1`,
-      `SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c LIKE '${cp}%' AND codeMagasin__c != null LIMIT 1`,
-      `SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c LIKE '${dep}%' AND codeMagasin__c != null LIMIT 1`,
-    ];
+    const queries = [];
+    if (fullIris) {
+      queries.push(`SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c, IRIS__c FROM Sectorisation__c WHERE IRIS__c = '${fullIris}' AND codeMagasin__c != null LIMIT 1`);
+      queries.push(`SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c, IRIS__c FROM Sectorisation__c WHERE IRIS__c LIKE '${fullIris.substring(0, 5)}%' AND codeMagasin__c != null LIMIT 1`);
+    }
+    queries.push(`SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c = '${cp}' AND codeMagasin__c != null LIMIT 1`);
+    queries.push(`SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c LIKE '${cp}%' AND codeMagasin__c != null LIMIT 1`);
+    queries.push(`SELECT Id, codeMagasin__c, libelleMagasin__c, codePostalAdm__c FROM Sectorisation__c WHERE codePostalAdm__c LIKE '${dep}%' AND codeMagasin__c != null LIMIT 1`);
 
     for (const soql of queries) {
       const result = await runQuery(soql);
@@ -60,6 +64,7 @@ module.exports = async function handler(req, res) {
           covered: true,
           codeMagasin: rec.codeMagasin__c,
           libelleMagasin: rec.libelleMagasin__c,
+          matchedBy: rec.IRIS__c ? 'IRIS' : 'codePostal',
         });
       }
     }
