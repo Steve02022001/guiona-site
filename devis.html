@@ -892,6 +892,15 @@
           <input type="text" class="field-input" id="prenom" placeholder="Paul">
           <span class="field-error" id="err-prenom">Veuillez saisir votre prénom</span>
         </div>
+        <div class="field-group">
+          <label class="field-label">Code postal *</label>
+          <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
+          <span class="field-error" id="err-cp">Désolé, Guiona n'est pas encore présent dans votre secteur.</span>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Ville *</label>
+          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
+        </div>
         <div class="field-group span2" style="position:relative;">
           <label class="field-label">Adresse *</label>
           <input type="text" class="field-input" id="adresse" placeholder="1 rue Jean Jaurès" autocomplete="off" oninput="searchAddress(this.value)">
@@ -900,14 +909,6 @@
             background: #fff; border: 1.5px solid rgba(184,115,51,0.3);
             border-top: none; display: none; max-height: 220px; overflow-y: auto;
           "></div>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Code postal *</label>
-          <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
-        </div>
-        <div class="field-group">
-          <label class="field-label">Ville *</label>
-          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
         </div>
         <div class="field-group">
           <label class="field-label">Téléphone *</label>
@@ -1082,7 +1083,7 @@
   }
 
   // Navigation
-  function nextStep(current) {
+  async function nextStep(current) {
     if (current === 1) {
       if (selections.produits.length === 0) { alert('Sélectionnez au moins un produit.'); return; }
       if (!selections.situation) { alert('Indiquez votre situation (propriétaire / locataire).'); return; }
@@ -1110,6 +1111,48 @@
         }
       });
       if (!valid) return;
+
+      // Vérification de la sectorisation (code postal couvert ?)
+      const cpInput = document.getElementById('codepostal');
+      const cpErr = document.getElementById('err-cp');
+      const cp = cpInput.value.trim();
+      if (!/^\d{5}$/.test(cp)) {
+        cpInput.classList.add('error');
+        cpErr.textContent = 'Code postal invalide';
+        cpErr.style.display = 'block';
+        return;
+      }
+
+      const nextBtn = document.querySelector('#step-1 .btn-next');
+      const originalLabel = nextBtn.textContent;
+      nextBtn.disabled = true;
+      nextBtn.textContent = 'Vérification...';
+      try {
+        const r = await fetch('/api/check-sectorisation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codePostal: cp }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.covered) {
+          cpInput.classList.add('error');
+          cpErr.textContent = "Désolé, Guiona n'est pas encore présent dans votre secteur.";
+          cpErr.style.display = 'block';
+          nextBtn.disabled = false;
+          nextBtn.textContent = originalLabel;
+          return;
+        }
+        cpInput.classList.remove('error');
+        cpErr.style.display = 'none';
+      } catch (e) {
+        cpErr.textContent = 'Erreur réseau, veuillez réessayer.';
+        cpErr.style.display = 'block';
+        nextBtn.disabled = false;
+        nextBtn.textContent = originalLabel;
+        return;
+      }
+      nextBtn.disabled = false;
+      nextBtn.textContent = originalLabel;
 
       // Générer l'étape 2
       renderStep2();
