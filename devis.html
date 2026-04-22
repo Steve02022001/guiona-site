@@ -928,7 +928,7 @@
         </div>
         <div class="field-group" style="position:relative;">
           <label class="field-label">Ville *</label>
-          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
+          <input type="text" class="field-input" id="ville" placeholder="Paris">
         </div>
         <div class="field-group span2" style="position:relative;">
           <label class="field-label">Adresse</label>
@@ -1327,9 +1327,9 @@
 
     adrTimeout = setTimeout(async () => {
       try {
-        const params = { type: 'adr', Adresse: val, Pays: 'FRA', Instance: 0 };
+        const params = { type: 'adr', Adresse: val, Pays: 'FRA', Instance: 0, Alpha: false };
         if (idLocalite) params.IDLocalite = idLocalite;
-        else if (cp) params.CodePostal = cp;
+        if (cp) params.CodePostal = cp;
 
         const res = await fetch('/api/dqe?' + new URLSearchParams(params));
         const data = await res.json();
@@ -1337,11 +1337,11 @@
         if (items.length === 0) { box.style.display = 'none'; return; }
         box.innerHTML = '';
         items.forEach(item => {
-          const label = `${item.Adresse}, ${item.CodePostal} ${item.Localite}`;
+          const label = `${item.Adresse}, ${item.CodePostal || cp} ${item.Localite || ''}`.trim();
           box.appendChild(makeSuggestionItem(label, () => {
             document.getElementById('adresse').value = item.Adresse;
-            document.getElementById('codepostal').value = item.CodePostal || cp;
-            document.getElementById('ville').value = item.Localite || document.getElementById('ville').value;
+            if (item.CodePostal) document.getElementById('codepostal').value = item.CodePostal;
+            if (item.Localite) document.getElementById('ville').value = item.Localite;
             if (item.IDLocalite) selectedIDLocalite = item.IDLocalite;
             box.style.display = 'none';
           }));
