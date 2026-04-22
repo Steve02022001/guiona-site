@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
 
   const endpointResolver = ENDPOINT_MAP[type];
   if (!endpointResolver) {
-    return res.status(400).json({ error: 'Parameter "type" doit être address | email | phone | cp' });
+    return res.status(400).json({ error: 'Parameter "type" doit être address | email | phone | cp | adr' });
   }
   const endpoint = endpointResolver();
   if (!endpoint) {
