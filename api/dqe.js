@@ -3,6 +3,7 @@ const ENDPOINT_MAP = {
   email: () => process.env.DQE_ENDPOINT_EMAIL,
   phone: () => process.env.DQE_ENDPOINT_TEL,
   cp: () => 'CP',
+  adr: () => 'ADR',
 };
 
 module.exports = async function handler(req, res) {
