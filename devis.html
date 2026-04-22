@@ -894,15 +894,15 @@
         </div>
         <div class="field-group">
           <label class="field-label">Code postal *</label>
-          <input type="text" class="field-input" id="codepostal" placeholder="75020" readonly>
+          <input type="text" class="field-input" id="codepostal" placeholder="75020" maxlength="5" inputmode="numeric">
           <span class="field-error" id="err-cp">Désolé, Guiona n'est pas encore présent dans votre secteur.</span>
         </div>
         <div class="field-group">
           <label class="field-label">Ville *</label>
-          <input type="text" class="field-input" id="ville" placeholder="Paris" readonly>
+          <input type="text" class="field-input" id="ville" placeholder="Paris">
         </div>
         <div class="field-group span2" style="position:relative;">
-          <label class="field-label">Adresse *</label>
+          <label class="field-label">Adresse</label>
           <input type="text" class="field-input" id="adresse" placeholder="1 rue Jean Jaurès" autocomplete="off" oninput="searchAddress(this.value)">
           <div id="adresse-suggestions" style="
             position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
@@ -1143,16 +1143,20 @@
         nextBtn.textContent = originalLabel;
       };
 
-      // Validation DQE : email, téléphone et adresse (RNVP pour IRIS) en parallèle
+      // Validation DQE : email, téléphone (toujours), adresse (RNVP pour IRIS) seulement si remplie
       try {
         const dqeCall = (params) => fetch('/api/dqe?' + new URLSearchParams(params).toString())
           .then(r => r.json())
           .catch(() => null);
 
+        const rnvpPromise = adresse
+          ? dqeCall({ type: 'address', Adresse: adresseComplete, Pays: 'FRA', Instance: 0 })
+          : Promise.resolve(null);
+
         const [emailRes, telRes, rnvpRes] = await Promise.all([
           dqeCall({ type: 'email', Email: email }),
           dqeCall({ type: 'phone', Tel: tel }),
-          dqeCall({ type: 'address', Adresse: adresseComplete, Pays: 'FRA', Instance: 0 }),
+          rnvpPromise,
         ]);
 
         // Validation email
