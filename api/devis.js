@@ -90,7 +90,7 @@ module.exports = async function handler(req, res) {
     const descLines = [];
     if (situation) descLines.push(`Situation: ${situation}`);
     if (message) descLines.push(message);
-    if (descLines.length) importPayload.Description = descLines.join('\n');
+    if (descLines.length) importPayload.description__c = descLines.join('\n');
 
     const importRes = await fetch(`${sfApi}/sobjects/Import__c`, {
       method: 'POST',
